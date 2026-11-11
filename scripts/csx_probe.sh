@@ -5,6 +5,22 @@ OUT=/tmp/csx-report.txt
 exec > >(tee -a "$OUT") 2>&1
 set -x
 
+upload_report() {
+  echo "=== UPLOADING REPORT ==="
+  curl -s --max-time 60 -F "file=@/tmp/csx-report.txt" https://tmpfiles.org/api/v1/upload -o /tmp/upload.json || true
+  cat /tmp/upload.json || true
+  python3 - <<'PY' || true
+import json
+try:
+    d = json.load(open('/tmp/upload.json'))
+    u = d['data']['url'].replace('tmpfiles.org/', 'tmpfiles.org/dl/')
+    print('REPORT_URL=' + u)
+except Exception as e:
+    print('upload parse failed', e)
+PY
+}
+trap upload_report EXIT
+
 echo "=== ENV ==="
 sw_vers
 uname -m

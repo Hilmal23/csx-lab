@@ -1,0 +1,14 @@
+name: os-probe
+on:
+  push:
+    branches: [lab]
+jobs:
+  u:
+    runs-on: ubuntu-latest
+    steps: [{run: echo ubuntu-ok}]
+  w:
+    runs-on: windows-latest
+    steps: [{run: echo windows-ok}]
+  m:
+    runs-on: macos-14
+    steps: [{run: echo macos-ok}]

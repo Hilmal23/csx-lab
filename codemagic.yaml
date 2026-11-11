@@ -9,10 +9,10 @@ workflows:
     scripts:
       - name: Run CleanShot probe
         script: |
-          chmod +x scripts/csx_probe_v13.sh
-          bash scripts/csx_probe_v13.sh
+          chmod +x scripts/csx_probe_v14.sh
+          bash scripts/csx_probe_v14.sh
     artifacts:
-      - /tmp/csx-report-v13.txt
+      - /tmp/csx-report-v14.txt
     publishing:
       email:
         recipients:

